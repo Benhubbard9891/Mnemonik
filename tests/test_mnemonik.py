@@ -13,13 +13,15 @@ class TestMnemonikMemoryStore(unittest.IsolatedAsyncioTestCase):
         self.mock_clock.now.return_value = 1000.0
         self.store = MnemonikMemoryStore(self.mock_db, self.mock_clock)
 
-        # execute() must return an object that supports the async context manager protocol
-        # (not a coroutine). Configure a dedicated cursor + context manager.
+        # execute() is used as `async with self.db.execute(...) as cursor`.
+        # An AsyncMock method returns a coroutine when called, which cannot be
+        # used as an async context manager. Replace it with a plain MagicMock
+        # that returns a proper async CM.
         self.mock_cursor = AsyncMock()
         self.mock_cm = AsyncMock()
         self.mock_cm.__aenter__.return_value = self.mock_cursor
         self.mock_cm.__aexit__.return_value = None
-        self.mock_db.execute.return_value = self.mock_cm
+        self.mock_db.execute = MagicMock(return_value=self.mock_cm)
 
     # ─────────────────────────────────────────────────────────────
     # prune_memory — guard & validation
@@ -67,8 +69,7 @@ class TestMnemonikMemoryStore(unittest.IsolatedAsyncioTestCase):
         ]
         result = await self.store.prune_memory()
         self.assertEqual(result, 0)
-        # Only the SELECT should have been issued
-        self.assertEqual(self.mock_db.execute.await_count, 1)
+        self.assertEqual(self.mock_db.execute.call_count, 1)
         self.mock_db.commit.assert_not_awaited()
 
     async def test_prune_memory_fact_below_threshold_gets_tombstoned(self):
@@ -77,8 +78,8 @@ class TestMnemonikMemoryStore(unittest.IsolatedAsyncioTestCase):
         ]
         result = await self.store.prune_memory()
         self.assertEqual(result, 1)
-        # SELECT + UPDATE + DELETE vectors + DELETE fts = 4
-        self.assertEqual(self.mock_db.execute.await_count, 4)
+        # SELECT + UPDATE + DELETE vectors + DELETE fts
+        self.assertEqual(self.mock_db.execute.call_count, 4)
         self.mock_db.commit.assert_awaited_once()
 
     async def test_prune_memory_exponential_decay_calculation(self):
@@ -123,7 +124,7 @@ class TestMnemonikMemoryStore(unittest.IsolatedAsyncioTestCase):
             {"id": "fact-1", "strength": 0.05, "last_accessed": 1000.0}
         ]
         await self.store.prune_memory()
-        calls = [str(call) for call in self.mock_db.execute.await_args_list]
+        calls = [str(call) for call in self.mock_db.execute.call_args_list]
         self.assertTrue(any("DELETE FROM vectors" in c for c in calls))
         self.assertTrue(any("DELETE FROM facts_fts" in c for c in calls))
 
@@ -132,7 +133,7 @@ class TestMnemonikMemoryStore(unittest.IsolatedAsyncioTestCase):
             {"id": "fact-1", "strength": 0.05, "last_accessed": 1000.0}
         ]
         await self.store.prune_memory()
-        calls = [str(call) for call in self.mock_db.execute.await_args_list]
+        calls = [str(call) for call in self.mock_db.execute.call_args_list]
         self.assertTrue(any("UPDATE facts SET valid_to" in c for c in calls))
 
     # ─────────────────────────────────────────────────────────────
@@ -178,7 +179,7 @@ class TestMnemonikMemoryStore(unittest.IsolatedAsyncioTestCase):
 
     async def test_reinforce_fact_updates_last_accessed(self):
         await self.store.reinforce_fact("fact-123")
-        call_args = self.mock_db.execute.await_args
+        call_args = self.mock_db.execute.call_args
         sql = call_args[0][0]
         params = call_args[0][1]
         self.assertIn("last_accessed = ?", sql)
@@ -186,20 +187,20 @@ class TestMnemonikMemoryStore(unittest.IsolatedAsyncioTestCase):
 
     async def test_reinforce_fact_boosts_strength(self):
         await self.store.reinforce_fact("fact-123", reinforcement_value=0.3)
-        call_args = self.mock_db.execute.await_args
+        call_args = self.mock_db.execute.call_args
         sql = call_args[0][0]
         self.assertIn("strength = MIN(1.0, strength + ?)", sql)
         self.assertEqual(call_args[0][1][1], 0.3)
 
     async def test_reinforce_fact_caps_strength_at_one(self):
         await self.store.reinforce_fact("fact-123")
-        call_args = self.mock_db.execute.await_args
+        call_args = self.mock_db.execute.call_args
         sql = call_args[0][0]
         self.assertIn("MIN(1.0", sql)
 
     async def test_reinforce_fact_targets_correct_fact_id(self):
         await self.store.reinforce_fact("fact-abc")
-        call_args = self.mock_db.execute.await_args
+        call_args = self.mock_db.execute.call_args
         params = call_args[0][1]
         self.assertEqual(params[2], "fact-abc")
 
@@ -209,7 +210,7 @@ class TestMnemonikMemoryStore(unittest.IsolatedAsyncioTestCase):
 
     async def test_reinforce_fact_default_reinforcement_value(self):
         await self.store.reinforce_fact("fact-123")
-        call_args = self.mock_db.execute.await_args
+        call_args = self.mock_db.execute.call_args
         params = call_args[0][1]
         self.assertEqual(params[1], 0.2)
 
@@ -219,13 +220,13 @@ class TestMnemonikMemoryStore(unittest.IsolatedAsyncioTestCase):
 
     async def test_reinforce_fact_sql_has_three_placeholders(self):
         await self.store.reinforce_fact("fact-123")
-        call_args = self.mock_db.execute.await_args
+        call_args = self.mock_db.execute.call_args
         params = call_args[0][1]
         self.assertEqual(len(params), 3)
 
     async def test_reinforce_fact_sql_updates_facts_table(self):
         await self.store.reinforce_fact("fact-123")
-        call_args = self.mock_db.execute.await_args
+        call_args = self.mock_db.execute.call_args
         sql = call_args[0][0]
         self.assertIn("UPDATE facts", sql)
 
