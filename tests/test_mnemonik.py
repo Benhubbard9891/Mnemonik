@@ -4,6 +4,27 @@ from unittest.mock import AsyncMock, MagicMock
 from mnemonik import MnemonikMemoryStore
 
 
+class DualProtocolMock(AsyncMock):
+    """Supports both `async with db.execute(...)` and `await db.execute(...)`.
+
+    aiosqlite-style APIs (and the production code under test) use execute in
+    two ways:
+      - async with self.db.execute(...) as cursor:   # SELECT
+      - await self.db.execute(...)                  # UPDATE / DELETE
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.__aenter__ = AsyncMock(return_value=self)
+        self.__aexit__ = AsyncMock(return_value=None)
+
+    def __await__(self):
+        async def _coro():
+            return self
+
+        return _coro().__await__()
+
+
 class TestMnemonikMemoryStore(unittest.IsolatedAsyncioTestCase):
     """Test suite for MnemonikMemoryStore."""
 
@@ -13,15 +34,20 @@ class TestMnemonikMemoryStore(unittest.IsolatedAsyncioTestCase):
         self.mock_clock.now.return_value = 1000.0
         self.store = MnemonikMemoryStore(self.mock_db, self.mock_clock)
 
-        # execute() is used as `async with self.db.execute(...) as cursor`.
-        # An AsyncMock method returns a coroutine when called, which cannot be
-        # used as an async context manager. Replace it with a plain MagicMock
-        # that returns a proper async CM.
-        self.mock_cursor = AsyncMock()
-        self.mock_cm = AsyncMock()
-        self.mock_cm.__aenter__.return_value = self.mock_cursor
-        self.mock_cm.__aexit__.return_value = None
-        self.mock_db.execute = MagicMock(return_value=self.mock_cm)
+        # Shared cursor used by the SELECT path
+        self.mock_cursor = DualProtocolMock()
+        # Every call to execute returns a DualProtocolMock that acts as both
+        # an async context manager and an awaitable. For the SELECT we wire
+        # the same cursor instance so tests can set fetchall.return_value.
+        def execute_side_effect(*args, **kwargs):
+            # First arg is the SQL string
+            sql = args[0] if args else ""
+            if "SELECT" in sql:
+                return self.mock_cursor
+            # For mutations just return a fresh awaitable CM
+            return DualProtocolMock()
+
+        self.mock_db.execute = MagicMock(side_effect=execute_side_effect)
 
     # ─────────────────────────────────────────────────────────────
     # prune_memory — guard & validation
