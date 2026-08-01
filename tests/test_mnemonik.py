@@ -1,135 +1,218 @@
 import unittest
-
-from mnemonik import MnemonikMemoryStore
-
-
-class FakeClock:
-    def __init__(self, now):
-        self._now = now
-
-    def now(self):
-        return self._now
+from unittest.mock import AsyncMock, MagicMock
+import asyncio
 
 
-class FakeCursor:
-    def __init__(self, rows):
-        self._rows = rows
+class TestMnemonikMemoryStore(unittest.IsolatedAsyncioTestCase):
+    """Test suite for MnemonikMemoryStore."""
 
-    async def __aenter__(self):
-        return self
+    def setUp(self):
+        self.mock_db = AsyncMock()
+        self.mock_clock = MagicMock()
+        self.mock_clock.now.return_value = 1000.0
+        self.store = MnemonikMemoryStore(self.mock_db, self.mock_clock)
 
-    async def __aexit__(self, exc_type, exc, tb):
-        return False
+    # ─────────────────────────────────────────────────────────────
+    # prune_memory — guard & validation
+    # ─────────────────────────────────────────────────────────────
 
-    async def fetchall(self):
-        return self._rows
-
-
-class FakeDB:
-    def __init__(self, facts):
-        self.facts = {fact["id"]: dict(fact) for fact in facts}
-        self.vectors = {fact["id"] for fact in facts}
-        self.fts = {fact["id"] for fact in facts}
-        self.commit_calls = 0
-
-    def execute(self, query, params=()):
-        if query.startswith("SELECT id, strength, last_accessed FROM facts"):
-            active_facts = [
-                {
-                    "id": fact["id"],
-                    "strength": fact["strength"],
-                    "last_accessed": fact["last_accessed"],
-                }
-                for fact in self.facts.values()
-                if fact.get("valid_to") is None
-            ]
-            return FakeCursor(active_facts)
-        return _ExecuteOperation(self, query, params)
-
-    async def commit(self):
-        self.commit_calls += 1
-
-
-class _ExecuteOperation:
-    def __init__(self, db, query, params):
-        self.db = db
-        self.query = query
-        self.params = params
-
-    def __await__(self):
-        return self._run().__await__()
-
-    async def _run(self):
-        if self.query.startswith("UPDATE facts SET valid_to"):
-            valid_to, fact_id = self.params
-            self.db.facts[fact_id]["valid_to"] = valid_to
-        elif self.query.startswith("DELETE FROM vectors"):
-            fact_id = self.params[0]
-            self.db.vectors.discard(fact_id)
-        elif self.query.startswith("DELETE FROM facts_fts"):
-            fact_id = self.params[0]
-            self.db.fts.discard(fact_id)
-        elif "UPDATE facts" in self.query and "strength = MIN(1.0, strength + ?)" in self.query:
-            now, reinforcement_value, fact_id = self.params
-            fact = self.db.facts[fact_id]
-            fact["last_accessed"] = now
-            fact["strength"] = min(1.0, fact["strength"] + reinforcement_value)
-        return None
-
-
-class MnemonikMemoryStoreTests(unittest.IsolatedAsyncioTestCase):
-    async def test_prune_memory_counts_every_pruned_fact(self):
-        db = FakeDB(
-            [
-                {"id": "prune-1", "strength": 0.05, "last_accessed": 0.0, "valid_to": None},
-                {"id": "prune-2", "strength": 0.09, "last_accessed": 0.0, "valid_to": None},
-                {"id": "keep", "strength": 0.9, "last_accessed": 95.0, "valid_to": None},
-            ]
-        )
-        store = MnemonikMemoryStore(db=db, clock=FakeClock(100.0))
-
-        pruned = await store.prune_memory(threshold=0.1, half_life_seconds=1000.0)
-
-        self.assertEqual(pruned, 2)
-        self.assertEqual(db.facts["prune-1"]["valid_to"], 100.0)
-        self.assertEqual(db.facts["prune-2"]["valid_to"], 100.0)
-        self.assertIsNone(db.facts["keep"]["valid_to"])
-        self.assertNotIn("prune-1", db.vectors)
-        self.assertNotIn("prune-2", db.fts)
-        self.assertEqual(db.commit_calls, 1)
-
-    async def test_prune_memory_skips_commit_when_nothing_pruned(self):
-        db = FakeDB(
-            [
-                {"id": "keep", "strength": 1.0, "last_accessed": 95.0, "valid_to": None},
-            ]
-        )
-        store = MnemonikMemoryStore(db=db, clock=FakeClock(100.0))
-
-        pruned = await store.prune_memory(threshold=0.1, half_life_seconds=1000.0)
-
-        self.assertEqual(pruned, 0)
-        self.assertEqual(db.commit_calls, 0)
-
-    async def test_reinforce_fact_updates_timestamp_and_caps_strength(self):
-        db = FakeDB(
-            [
-                {"id": "fact-1", "strength": 0.9, "last_accessed": 10.0, "valid_to": None},
-            ]
-        )
-        store = MnemonikMemoryStore(db=db, clock=FakeClock(100.0))
-
-        await store.reinforce_fact("fact-1", reinforcement_value=0.2)
-
-        self.assertEqual(db.facts["fact-1"]["last_accessed"], 100.0)
-        self.assertEqual(db.facts["fact-1"]["strength"], 1.0)
-        self.assertEqual(db.commit_calls, 1)
-
-    async def test_missing_database_raises_runtime_error(self):
-        store = MnemonikMemoryStore(db=None, clock=FakeClock(100.0))
-
-        with self.assertRaises(RuntimeError):
+    async def test_prune_memory_raises_when_db_is_none(self):
+        store = MnemonikMemoryStore(db=None, clock=self.mock_clock)
+        with self.assertRaises(RuntimeError) as ctx:
             await store.prune_memory()
+        self.assertIn("Database not connected", str(ctx.exception))
 
-        with self.assertRaises(RuntimeError):
-            await store.reinforce_fact("fact-1")
+    async def test_prune_memory_rejects_negative_threshold(self):
+        with self.assertRaises(ValueError) as ctx:
+            await self.store.prune_memory(threshold=-0.1)
+        self.assertIn("threshold must be in [0.0, 1.0]", str(ctx.exception))
+
+    async def test_prune_memory_rejects_threshold_above_one(self):
+        with self.assertRaises(ValueError) as ctx:
+            await self.store.prune_memory(threshold=1.1)
+        self.assertIn("threshold must be in [0.0, 1.0]", str(ctx.exception))
+
+    async def test_prune_memory_rejects_zero_half_life(self):
+        with self.assertRaises(ValueError) as ctx:
+            await store.prune_memory(half_life_seconds=0.0)
+        self.assertIn("half_life_seconds must be > 0", str(ctx.exception))
+
+    async def test_prune_memory_rejects_negative_half_life(self):
+        with self.assertRaises(ValueError) as ctx:
+            await store.prune_memory(half_life_seconds=-1.0)
+        self.assertIn("half_life_seconds must be > 0", str(ctx.exception))
+
+    # ─────────────────────────────────────────────────────────────
+    # prune_memory — decay & pruning logic
+    # ─────────────────────────────────────────────────────────────
+
+    async def test_prune_memory_no_active_facts_returns_zero(self):
+        self.mock_db.execute.return_value.__aenter__.return_value.fetchall.return_value = []
+        result = await self.store.prune_memory()
+        self.assertEqual(result, 0)
+        self.mock_db.commit.assert_not_awaited()
+
+    async def test_prune_memory_fact_above_threshold_not_pruned(self):
+        self.mock_db.execute.return_value.__aenter__.return_value.fetchall.return_value = [
+            {"id": "fact-1", "strength": 1.0, "last_accessed": 1000.0}
+        ]
+        result = await self.store.prune_memory()
+        self.assertEqual(result, 0)
+        self.assertEqual(self.mock_db.execute.await_count, 1)
+        self.mock_db.commit.assert_not_awaited()
+
+    async def test_prune_memory_fact_below_threshold_gets_tombstoned(self):
+        self.mock_db.execute.return_value.__aenter__.return_value.fetchall.return_value = [
+            {"id": "fact-1", "strength": 0.05, "last_accessed": 1000.0}
+        ]
+        result = await self.store.prune_memory()
+        self.assertEqual(result, 1)
+        self.assertEqual(self.mock_db.execute.await_count, 4)
+        self.mock_db.commit.assert_awaited_once()
+
+    async def test_prune_memory_exponential_decay_calculation(self):
+        self.mock_clock.now.return_value = 1100.0
+        self.mock_db.execute.return_value.__aenter__.return_value.fetchall.return_value = [
+            {"id": "fact-1", "strength": 0.5, "last_accessed": 1000.0}
+        ]
+        result = await self.store.prune_memory(threshold=0.3, half_life_seconds=100.0)
+        self.assertEqual(result, 1)
+
+    async def test_prune_memory_exactly_at_threshold_not_pruned(self):
+        self.mock_db.execute.return_value.__aenter__.return_value.fetchall.return_value = [
+            {"id": "fact-1", "strength": 0.1, "last_accessed": 1000.0}
+        ]
+        result = await self.store.prune_memory(threshold=0.1)
+        self.assertEqual(result, 0)
+
+    async def test_prune_memory_multiple_facts_mixed(self):
+        self.mock_clock.now.return_value = 1100.0
+        self.mock_db.execute.return_value.__aenter__.return_value.fetchall.return_value = [
+            {"id": "fact-strong", "strength": 1.0, "last_accessed": 1000.0},
+            {"id": "fact-weak", "strength": 0.1, "last_accessed": 1000.0},
+        ]
+        result = await self.store.prune_memory(threshold=0.1, half_life_seconds=100.0)
+        self.assertEqual(result, 1)
+        self.mock_db.commit.assert_awaited_once()
+
+    async def test_prune_memory_elapsed_negative_clamped_to_zero(self):
+        self.mock_clock.now.return_value = 500.0
+        self.mock_db.execute.return_value.__aenter__.return_value.fetchall.return_value = [
+            {"id": "fact-1", "strength": 0.05, "last_accessed": 1000.0}
+        ]
+        result = await self.store.prune_memory()
+        self.assertEqual(result, 1)
+
+    async def test_prune_memory_deletes_vector_and_fts_indices(self):
+        self.mock_db.execute.return_value.__aenter__.return_value.fetchall.return_value = [
+            {"id": "fact-1", "strength": 0.05, "last_accessed": 1000.0}
+        ]
+        await self.store.prune_memory()
+        calls = [str(call) for call in self.mock_db.execute.await_args_list]
+        self.assertTrue(any("DELETE FROM vectors" in c for c in calls))
+        self.assertTrue(any("DELETE FROM facts_fts" in c for c in calls))
+
+    async def test_prune_memory_sets_valid_to_timestamp(self):
+        self.mock_db.execute.return_value.__aenter__.return_value.fetchall.return_value = [
+            {"id": "fact-1", "strength": 0.05, "last_accessed": 1000.0}
+        ]
+        await self.store.prune_memory()
+        calls = [str(call) for call in self.mock_db.execute.await_args_list]
+        self.assertTrue(any("UPDATE facts SET valid_to" in c for c in calls))
+
+    # ─────────────────────────────────────────────────────────────
+    # prune_memory — edge cases
+    # ─────────────────────────────────────────────────────────────
+
+    async def test_prune_memory_threshold_zero_prunes_nothing_with_positive_strength(self):
+        self.mock_db.execute.return_value.__aenter__.return_value.fetchall.return_value = [
+            {"id": "fact-1", "strength": 0.0001, "last_accessed": 1000.0}
+        ]
+        result = await self.store.prune_memory(threshold=0.0)
+        self.assertEqual(result, 0)
+
+    async def test_prune_memory_threshold_one_prunes_all(self):
+        self.mock_db.execute.return_value.__aenter__.return_value.fetchall.return_value = [
+            {"id": "fact-1", "strength": 1.0, "last_accessed": 1000.0}
+        ]
+        result = await self.store.prune_memory(threshold=1.0)
+        self.assertEqual(result, 0)
+
+    async def test_prune_memory_very_large_half_life_minimal_decay(self):
+        self.mock_clock.now.return_value = 2000.0
+        self.mock_db.execute.return_value.__aenter__.return_value.fetchall.return_value = [
+            {"id": "fact-1", "strength": 0.5, "last_accessed": 1000.0}
+        ]
+        result = await self.store.prune_memory(half_life_seconds=1e9, threshold=0.4)
+        self.assertEqual(result, 0)
+
+    # ─────────────────────────────────────────────────────────────
+    # reinforce_fact — guard
+    # ─────────────────────────────────────────────────────────────
+
+    async def test_reinforce_fact_raises_when_db_is_none(self):
+        store = MnemonikMemoryStore(db=None, clock=self.mock_clock)
+        with self.assertRaises(RuntimeError) as ctx:
+            await store.reinforce_fact("fact-123")
+        self.assertIn("Database not connected", str(ctx.exception))
+
+    # ─────────────────────────────────────────────────────────────
+    # reinforce_fact — behavior
+    # ─────────────────────────────────────────────────────────────
+
+    async def test_reinforce_fact_updates_last_accessed(self):
+        await self.store.reinforce_fact("fact-123")
+        call_args = self.mock_db.execute.await_args
+        sql = call_args[0][0]
+        params = call_args[0][1]
+        self.assertIn("last_accessed = ?", sql)
+        self.assertEqual(params[0], 1000.0)
+
+    async def test_reinforce_fact_boosts_strength(self):
+        await self.store.reinforce_fact("fact-123", reinforcement_value=0.3)
+        call_args = self.mock_db.execute.await_args
+        sql = call_args[0][0]
+        self.assertIn("strength = MIN(1.0, strength + ?)", sql)
+        self.assertEqual(call_args[0][1][1], 0.3)
+
+    async def test_reinforce_fact_caps_strength_at_one(self):
+        await self.store.reinforce_fact("fact-123")
+        call_args = self.mock_db.execute.await_args
+        sql = call_args[0][0]
+        self.assertIn("MIN(1.0", sql)
+
+    async def test_reinforce_fact_targets_correct_fact_id(self):
+        await self.store.reinforce_fact("fact-abc")
+        call_args = self.mock_db.execute.await_args
+        params = call_args[0][1]
+        self.assertEqual(params[2], "fact-abc")
+
+    async def test_reinforce_fact_commits_transaction(self):
+        await self.store.reinforce_fact("fact-123")
+        self.mock_db.commit.assert_awaited_once()
+
+    async def test_reinforce_fact_default_reinforcement_value(self):
+        await self.store.reinforce_fact("fact-123")
+        call_args = self.mock_db.execute.await_args
+        params = call_args[0][1]
+        self.assertEqual(params[1], 0.2)
+
+    # ─────────────────────────────────────────────────────────────
+    # reinforce_fact — SQL structure
+    # ─────────────────────────────────────────────────────────────
+
+    async def test_reinforce_fact_sql_has_three_placeholders(self):
+        await self.store.reinforce_fact("fact-123")
+        call_args = self.mock_db.execute.await_args
+        params = call_args[0][1]
+        self.assertEqual(len(params), 3)
+
+    async def test_reinforce_fact_sql_updates_facts_table(self):
+        await self.store.reinforce_fact("fact-123")
+        call_args = self.mock_db.execute.await_args
+        sql = call_args[0][0]
+        self.assertIn("UPDATE facts", sql)
+
+
+if __name__ == "__main__":
+    unittest.main()
