@@ -11,12 +11,18 @@ maintenance operations:
 ## Example implementation
 
 ```python
+import asyncio
+
 from mnemonik import MnemonikMemoryStore
 
-store = MnemonikMemoryStore(db=my_async_db, clock=my_clock)
+async def main() -> None:
+    store = MnemonikMemoryStore(db=my_async_db, clock=my_clock)
 
-pruned = await store.prune_memory()
-await store.reinforce_fact("fact-123")
+    pruned = await store.prune_memory()
+    await store.reinforce_fact("fact-123")
+
+
+asyncio.run(main())
 ```
 
 ## Behavior
