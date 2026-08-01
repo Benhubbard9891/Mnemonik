@@ -2,6 +2,8 @@ import unittest
 from unittest.mock import AsyncMock, MagicMock
 import asyncio
 
+from mnemonik import MnemonikMemoryStore
+
 
 class TestMnemonikMemoryStore(unittest.IsolatedAsyncioTestCase):
     """Test suite for MnemonikMemoryStore."""
@@ -34,12 +36,12 @@ class TestMnemonikMemoryStore(unittest.IsolatedAsyncioTestCase):
 
     async def test_prune_memory_rejects_zero_half_life(self):
         with self.assertRaises(ValueError) as ctx:
-            await store.prune_memory(half_life_seconds=0.0)
+            await self.store.prune_memory(half_life_seconds=0.0)
         self.assertIn("half_life_seconds must be > 0", str(ctx.exception))
 
     async def test_prune_memory_rejects_negative_half_life(self):
         with self.assertRaises(ValueError) as ctx:
-            await store.prune_memory(half_life_seconds=-1.0)
+            await self.store.prune_memory(half_life_seconds=-1.0)
         self.assertIn("half_life_seconds must be > 0", str(ctx.exception))
 
     # ─────────────────────────────────────────────────────────────
