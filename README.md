@@ -45,5 +45,5 @@ asyncio.run(main())
 ## Running tests
 
 ```bash
-python -m unittest discover -s tests
+python -m unittest discover -s tests -v
 ```
