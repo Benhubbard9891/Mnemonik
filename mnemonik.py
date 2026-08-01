@@ -8,8 +8,12 @@ class MnemonikMemoryStore:
         threshold: float = 0.1,
         half_life_seconds: float = 604800.0,
     ) -> int:
-        if not self.db:
+        if self.db is None:
             raise RuntimeError("Database not connected.")
+        if not (0.0 <= threshold <= 1.0):
+            raise ValueError(f"threshold must be in [0.0, 1.0], got {threshold}")
+        if half_life_seconds <= 0:
+            raise ValueError(f"half_life_seconds must be > 0, got {half_life_seconds}")
 
         now = self.clock.now()
         pruned_count = 0
@@ -52,7 +56,7 @@ class MnemonikMemoryStore:
         fact_id: str,
         reinforcement_value: float = 0.2,
     ) -> None:
-        if not self.db:
+        if self.db is None:
             raise RuntimeError("Database not connected.")
 
         now = self.clock.now()
