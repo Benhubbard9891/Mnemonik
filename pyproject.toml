@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mnemonik-evoke"
+version = "1.0.0rc1"
+description = "SQLite/FTS5 memory substrate with structured facts and ranking"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [{name = "Benjamin L. Hubbard III"}]
+dependencies = []
+
+[project.scripts]
+mnemonik = "mnemonik.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mnemonik*"]
