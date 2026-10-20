@@ -1,0 +1,30 @@
+[
+  {
+    "id": "9db95e069a1b4bccbfcedd801015c3c7",
+    "subject": "Toro TimeCutter Zero-Turn",
+    "predicate": "drive_diagnosis",
+    "object": "Left-side drive failure diagnosed as blown hydraulic wheel motor seal.",
+    "scope": "demo:fleet-01",
+    "valid_from": 1700000000.0,
+    "valid_to": 1700000060.0,
+    "supersedes": null,
+    "created_at": 1700000000.0,
+    "strength": 1.0,
+    "last_accessed": 1700000000.0,
+    "provenance": "{\"actor\": \"demo:technician-A\", \"evidence\": \"Synthetic initial inspection\"}"
+  },
+  {
+    "id": "corrected-placeholder",
+    "subject": "Toro TimeCutter Zero-Turn",
+    "predicate": "drive_diagnosis",
+    "object": "Left-side drive failure caused by snapped Wescon lever control cable. Hydraulic system intact.",
+    "scope": "demo:fleet-01",
+    "valid_from": 1700000060.0,
+    "valid_to": null,
+    "supersedes": "9db95e069a1b4bccbfcedd801015c3c7",
+    "created_at": 1700000060.0,
+    "strength": 1.0,
+    "last_accessed": 1700000060.0,
+    "provenance": "{\"actor\": \"demo:technician-A\", \"evidence\": \"Synthetic follow-up inspection\"}"
+  }
+]
