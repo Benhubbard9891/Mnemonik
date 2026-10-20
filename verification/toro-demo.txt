@@ -1,0 +1,3 @@
+ACTIVE: Left-side drive failure caused by snapped Wescon lever control cable. Hydraulic system intact.
+SUPERSEDED: Left-side drive failure diagnosed as blown hydraulic wheel motor seal.
+PASS: exact logical state, index rows, receipts and retrieval recovered after close/reopen
