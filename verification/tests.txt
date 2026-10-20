@@ -1,0 +1,47 @@
+test_prune_memory_deletes_vector_and_fts_indices (test_mnemonik.TestMnemonikMemoryStore.test_prune_memory_deletes_vector_and_fts_indices) ... ok
+test_prune_memory_elapsed_negative_clamped_to_zero (test_mnemonik.TestMnemonikMemoryStore.test_prune_memory_elapsed_negative_clamped_to_zero) ... ok
+test_prune_memory_exactly_at_threshold_not_pruned (test_mnemonik.TestMnemonikMemoryStore.test_prune_memory_exactly_at_threshold_not_pruned) ... ok
+test_prune_memory_exponential_decay_calculation (test_mnemonik.TestMnemonikMemoryStore.test_prune_memory_exponential_decay_calculation) ... ok
+test_prune_memory_fact_above_threshold_not_pruned (test_mnemonik.TestMnemonikMemoryStore.test_prune_memory_fact_above_threshold_not_pruned) ... ok
+test_prune_memory_fact_below_threshold_gets_tombstoned (test_mnemonik.TestMnemonikMemoryStore.test_prune_memory_fact_below_threshold_gets_tombstoned) ... ok
+test_prune_memory_multiple_facts_mixed (test_mnemonik.TestMnemonikMemoryStore.test_prune_memory_multiple_facts_mixed) ... ok
+test_prune_memory_no_active_facts_returns_zero (test_mnemonik.TestMnemonikMemoryStore.test_prune_memory_no_active_facts_returns_zero) ... ok
+test_prune_memory_raises_when_db_is_none (test_mnemonik.TestMnemonikMemoryStore.test_prune_memory_raises_when_db_is_none) ... ok
+test_prune_memory_rejects_negative_half_life (test_mnemonik.TestMnemonikMemoryStore.test_prune_memory_rejects_negative_half_life) ... ok
+test_prune_memory_rejects_negative_threshold (test_mnemonik.TestMnemonikMemoryStore.test_prune_memory_rejects_negative_threshold) ... ok
+test_prune_memory_rejects_threshold_above_one (test_mnemonik.TestMnemonikMemoryStore.test_prune_memory_rejects_threshold_above_one) ... ok
+test_prune_memory_rejects_zero_half_life (test_mnemonik.TestMnemonikMemoryStore.test_prune_memory_rejects_zero_half_life) ... ok
+test_prune_memory_sets_valid_to_timestamp (test_mnemonik.TestMnemonikMemoryStore.test_prune_memory_sets_valid_to_timestamp) ... ok
+test_prune_memory_threshold_one_prunes_all (test_mnemonik.TestMnemonikMemoryStore.test_prune_memory_threshold_one_prunes_all) ... ok
+test_prune_memory_threshold_zero_prunes_nothing_with_positive_strength (test_mnemonik.TestMnemonikMemoryStore.test_prune_memory_threshold_zero_prunes_nothing_with_positive_strength) ... ok
+test_prune_memory_very_large_half_life_minimal_decay (test_mnemonik.TestMnemonikMemoryStore.test_prune_memory_very_large_half_life_minimal_decay) ... ok
+test_reinforce_fact_boosts_strength (test_mnemonik.TestMnemonikMemoryStore.test_reinforce_fact_boosts_strength) ... ok
+test_reinforce_fact_raises_when_db_is_none (test_mnemonik.TestMnemonikMemoryStore.test_reinforce_fact_raises_when_db_is_none) ... ok
+test_reinforce_fact_sql_updates_facts_table (test_mnemonik.TestMnemonikMemoryStore.test_reinforce_fact_sql_updates_facts_table) ... ok
+test_reinforce_fact_targets_correct_fact_id (test_mnemonik.TestMnemonikMemoryStore.test_reinforce_fact_targets_correct_fact_id) ... ok
+test_reinforce_fact_updates_last_accessed (test_mnemonik.TestMnemonikMemoryStore.test_reinforce_fact_updates_last_accessed) ... ok
+test_bad_embedding_batch_rolls_back (test_release.ReleaseGates.test_bad_embedding_batch_rolls_back) ... ok
+test_blank_scope_rejected (test_release.ReleaseGates.test_blank_scope_rejected) ... ok
+test_cancelled_write_rolls_back (test_release.ReleaseGates.test_cancelled_write_rolls_back) ... ok
+test_clock_regression_rejected (test_release.ReleaseGates.test_clock_regression_rejected) ... ok
+test_concurrent_stale_update_rejected (test_release.ReleaseGates.test_concurrent_stale_update_rejected) ... ok
+test_embedding_dimension_guard (test_release.ReleaseGates.test_embedding_dimension_guard) ... ok
+test_external_anchor_detects_rollback (test_release.ReleaseGates.test_external_anchor_detects_rollback) ... ok
+test_independent_connections_serialize (test_release.ReleaseGates.test_independent_connections_serialize) ... ok
+test_noop_audited_without_new_fact (test_release.ReleaseGates.test_noop_audited_without_new_fact) ... ok
+test_process_exit_before_commit (test_release.ReleaseGates.test_process_exit_before_commit) ... ok
+test_ranking_guards_and_fts (test_release.ReleaseGates.test_ranking_guards_and_fts) ... ok
+test_restart_exact_state_and_indexes (test_release.ReleaseGates.test_restart_exact_state_and_indexes) ... ok
+test_restored_old_database_rejected_by_anchor (test_release.ReleaseGates.test_restored_old_database_rejected_by_anchor) ... ok
+test_rollback_index_failure (test_release.ReleaseGates.test_rollback_index_failure) ... ok
+test_rollback_receipt_failure (test_release.ReleaseGates.test_rollback_receipt_failure) ... ok
+test_scope_and_subject_isolation (test_release.ReleaseGates.test_scope_and_subject_isolation) ... ok
+test_supersession_preserves_original (test_release.ReleaseGates.test_supersession_preserves_original) ... ok
+test_tampered_fact_rejected_on_open (test_release.ReleaseGates.test_tampered_fact_rejected_on_open) ... ok
+test_tampered_index_detected (test_release.ReleaseGates.test_tampered_index_detected) ... ok
+test_tampered_receipt_detected (test_release.ReleaseGates.test_tampered_receipt_detected) ... ok
+
+----------------------------------------------------------------------
+Ran 46 tests in 0.935s
+
+OK
