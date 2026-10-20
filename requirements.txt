@@ -1,1 +1,1 @@
-# Runtime: stdlib only
+aiosqlite==0.21.0
