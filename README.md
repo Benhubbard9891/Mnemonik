@@ -21,6 +21,12 @@ mnemonik --db toro-demo.db audit
 python -m unittest discover -s tests -v
 ```
 
+Building requires setuptools 84.0.0; install `build-requirements.txt` if it is not available. A prebuilt wheel is referenced in `dist/SHA256SUMS`. The demo refuses to overwrite an existing database; omit `--db` for a temporary demo. All demo and engine operations then run without network access or API keys.
+
+## Toro demonstration
+
+[examples/equipment_pilot.py](examples/equipment_pilot.py) records a **synthetic** hydraulic-seal diagnosis, supersedes it with the supplied Wescon cable correction, and displays both versions. It closes the connection, reopens the on-disk database, compares the complete logical facts/vector/FTS/edge/receipt snapshots, verifies the retained receipt head, and checks active retrieval again. It does not establish that this diagnosis or part is correct for a particular real mower.
+
 ## API
 
 ```python
@@ -41,6 +47,21 @@ async with MemoryEngine('memory.db') as memory:
     history = await memory.history('asset-42', 'diagnosis', scope='work-order-17')
     audit = await memory.verify()
 ```
+
+## Repository layout
+
+- `mnemonik/engine.py`: connection lifecycle and transaction boundary
+- `mnemonik/operations.py`: scoped writes, linked corrections, retrieval
+- `mnemonik/audit.py`: canonical hashing and receipt verification
+- `mnemonik/reconciliation.py`: extracted ranking primitives
+- `mnemonik/models.py`, `providers.py`: data models and offline test embedder
+- `mnemonik/cli.py`: installed inspection command
+- `tests/`: legacy tests and release-gate integration tests
+- `examples/equipment_pilot.py`: canonical offline workflow
+- `mnemonik_v31_colab_verify.ipynb`: imports the package; no embedded engine copy
+- `SOURCE_PROVENANCE.md`: extraction origin and intentional behavior changes
+- `VERIFICATION.md`: observed results and limits
+- `dist/SHA256SUMS`: checksums for the release tree and wheel
 
 See `VERIFICATION.md`, `SOURCE_PROVENANCE.md`, and `SECURITY.md` for integrity notes and limits.
 
