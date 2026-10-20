@@ -1,20 +1,19 @@
 [build-system]
-requires = ["setuptools>=61", "wheel"]
+requires = ["setuptools==84.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "mnemonik-evoke"
 version = "1.0.0rc1"
-description = "SQLite/FTS5 memory substrate with structured facts and ranking"
+description = "Local fact memory with scoped supersession and hash-linked receipts"
 readme = "README.md"
-requires-python = ">=3.9"
-license = {text = "MIT"}
+requires-python = ">=3.10"
+license = "MIT"
 authors = [{name = "Benjamin L. Hubbard III"}]
-dependencies = []
+dependencies = ["aiosqlite==0.21.0"]
 
 [project.scripts]
 mnemonik = "mnemonik.cli:main"
 
 [tool.setuptools.packages.find]
-where = ["."]
 include = ["mnemonik*"]
