@@ -13,51 +13,89 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS facts (
  id TEXT PRIMARY KEY, subject TEXT NOT NULL, predicate TEXT NOT NULL,
  object TEXT NOT NULL, scope TEXT NOT NULL, valid_from REAL NOT NULL,
- valid_to REAL, actor TEXT NOT NULL, evidence TEXT, supersedes TEXT,
- sequence INTEGER NOT NULL, active INTEGER NOT NULL DEFAULT 1
-);
-CREATE INDEX IF NOT EXISTS idx_facts_subject ON facts(subject);
-CREATE INDEX IF NOT EXISTS idx_facts_scope ON facts(scope);
-CREATE INDEX IF NOT EXISTS idx_facts_active ON facts(active);
-CREATE TABLE IF NOT EXISTS receipts (
- id TEXT PRIMARY KEY, sequence INTEGER NOT NULL, actor TEXT NOT NULL,
- ts REAL NOT NULL, evidence TEXT, operation TEXT NOT NULL,
- fact_id TEXT NOT NULL, state_hash TEXT NOT NULL, prev_hash TEXT NOT NULL,
- head TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+ valid_to REAL, supersedes TEXT UNIQUE REFERENCES facts(id),
+ created_at REAL NOT NULL, strength REAL NOT NULL, last_accessed REAL NOT NULL,
+ provenance TEXT NOT NULL, CHECK(valid_to IS NULL OR valid_to >= valid_from));
+CREATE UNIQUE INDEX IF NOT EXISTS one_head ON facts(scope,subject,predicate) WHERE valid_to IS NULL;
+CREATE TABLE IF NOT EXISTS vectors(fact_id TEXT PRIMARY KEY REFERENCES facts(id),vector BLOB NOT NULL);
+CREATE VIRTUAL TABLE IF NOT EXISTS facts_fts USING fts5(fact_id UNINDEXED,text);
+CREATE TABLE IF NOT EXISTS edges(scope TEXT,source TEXT,target TEXT,predicate TEXT,weight REAL,
+ PRIMARY KEY(scope,source,target,predicate));
+CREATE TABLE IF NOT EXISTS receipts(seq INTEGER PRIMARY KEY,payload TEXT NOT NULL,
+ previous_hash TEXT NOT NULL,receipt_hash TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+INSERT OR IGNORE INTO metadata VALUES('schema_version','1');
 """
 
-class MemoryEngine:
-    def __init__(self, path: str, embedder=None, ranking=None):
-        self.path = path
+class MemoryEngine(Operations, Audit, Ranking):
+    def __init__(self, path=':memory:', *, clock=None, embedder=None):
+        self.path = str(path)
+        self.clock = clock or SystemClock()
         self.embedder = embedder or AsyncHashingEmbedder()
-        self.ranking = ranking or Ranking()
-        self._db = None
-        self._ops = None
-        self._audit = None
-        self._clock = SystemClock()
+        self.db = None
+        self._lock = asyncio.Lock()
+
+    async def setup(self):
+        if self.db is not None:
+            raise RuntimeError('Engine already open')
+        self.db = await aiosqlite.connect(self.path, isolation_level=None)
+        self.db.row_factory = aiosqlite.Row
+        try:
+            await self.db.execute('PRAGMA foreign_keys=ON')
+            await self.db.execute('PRAGMA busy_timeout=5000')
+            await self.db.execute('PRAGMA journal_mode=WAL')
+            await self.db.execute('PRAGMA synchronous=FULL')
+            # Existing foreign schemas must never be silently adopted.
+            tables = await self._rows("SELECT name FROM sqlite_master WHERE type='table'")
+            if tables:
+                if not any(r['name']=='metadata' for r in tables):
+                    raise ValueError('Unrecognized database: export/import migration required')
+                version = await self._rows("SELECT value FROM metadata WHERE key='schema_version'")
+                if not version or version[0]['value'] != '1':
+                    raise ValueError('Unsupported schema version')
+            await self.db.executescript(SCHEMA)
+            await self.verify()
+            return self
+        except BaseException:
+            await self.db.close()
+            self.db = None
+            raise
+
+    async def close(self):
+        async with self._lock:
+            if self.db:
+                await self.db.close()
+                self.db = None
 
     async def __aenter__(self):
-        self._db = await aiosqlite.connect(self.path)
-        await self._db.executescript(SCHEMA)
-        await self._db.commit()
-        self._ops = Operations(self._db, self._clock, self.embedder, self.ranking)
-        self._audit = Audit(self._db)
-        return self
+        return await self.setup()
 
     async def __aexit__(self, *args):
-        if self._db:
-            await self._db.close()
+        await self.close()
 
-    async def put(self, subject, predicate, value, *, scope, actor, evidence="", expected_id=None):
-        return await self._ops.put(subject, predicate, value, scope=scope, actor=actor, evidence=evidence, expected_id=expected_id)
+    def _require(self):
+        if self.db is None:
+            raise RuntimeError('Database not connected')
 
-    async def recall(self, query, *, scope=None, limit=10):
-        return await self._ops.recall(query, scope=scope, limit=limit)
+    async def _rows(self, sql, args=()):
+        self._require()
+        async with self.db.execute(sql,args) as cur:
+            return [dict(row) for row in await cur.fetchall()]
 
-    async def history(self, subject, predicate, *, scope=None):
-        return await self._ops.history(subject, predicate, scope=scope)
+    @asynccontextmanager
+    async def _transaction(self, write=False):
+        async with self._lock:
+            self._require()
+            await self.db.execute('BEGIN IMMEDIATE' if write else 'BEGIN')
+            try:
+                yield
+                await self.db.commit()
+            except BaseException:
+                await self.db.rollback()
+                raise
 
-    async def audit(self, expected_head=None):
-        return await self._audit.verify(expected_head=expected_head)
+    def _now(self):
+        now=float(self.clock.now())
+        if not math.isfinite(now):
+            raise ValueError('Clock must be finite')
+        return now
